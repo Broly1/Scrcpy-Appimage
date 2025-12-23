@@ -1,0 +1,22 @@
+#!/bin/bash
+HERE="$(dirname "$(readlink -f "${0}")")"
+
+# 1. Check if the v4l2loopback module is loaded
+if ! lsmod | grep -q v4l2loopback; then
+    echo "ERROR: v4l2loopback module not found."
+    echo "Please run: sudo modprobe v4l2loopback exclusive_caps=1"
+    # Optional: Open a simple zenity or kdialog popup here if you want a GUI warning
+    exit 1
+fi
+
+# 2. Automatically find the device ID for 'v4l2loopback'
+# This looks for the device that matches the loopback driver
+VIDEO_DEV=$(v4l2-ctl --list-devices 2>/dev/null | grep -A1 "v4l2 loopback" | grep -o "/dev/video[0-9]*" | head -n1)
+
+# Default to /dev/video0 if detection fails but module is loaded
+IF_SINK=${VIDEO_DEV:-/dev/video0}
+
+echo "Targeting V4L2 Sink: $IF_SINK"
+
+# 3. Run scrcpy
+exec "$HERE/scrcpy" --video-source=camera --camera-facing=back --camera-fps=60 --v4l2-sink="$IF_SINK" "$@"
