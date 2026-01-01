@@ -1,4 +1,5 @@
-# Scrcpy AppImage (Unofficial)
+
+# Scrcpy-Webcam (AppImage)
 
 <div align="center">
 
@@ -6,62 +7,93 @@
 ![Version](https://img.shields.io/badge/scrcpy-v3.3.3-green)
 ![Platform](https://img.shields.io/badge/platform-Linux-blue)
 
-**[ English ]** | [ [中文说明] ](README_zh.md)
+**[ English ]** | [ [中文说明] ](README_zh-CN.md) | [ [PTBR] ](README_pt-BR.md)
 
 </div>
 
 ---
 
-An unofficial AppImage build for [Genymobile/scrcpy](https://github.com/Genymobile/scrcpy).
+**Scrcpy-Webcam** is a wrapper that turns your Android phone into a high-performance Linux webcam. By bridging `scrcpy` with the `v4l2loopback` kernel module, it creates a virtual camera device that works natively with Zoom, OBS, Discord, and more.
 
-## 🧐 Why this repository?
+## ✨ Features
 
-This repository was created to address a specific issue where installing `scrcpy` via system package managers (e.g., `dnf` on Fedora/RHEL) resulted in a **grayscale/black-and-white display**.
-
-This AppImage packages the official pre-built binaries (v3.3.3) into a portable format. By bypassing the specific repository versions that cause the rendering glitch, this build ensures a **proper full-color display** on affected systems.
-
----
-
-## ⚠️ Important Note on Dependencies
-
-**This is a "Lightweight" AppImage.** Unlike standard AppImages that bundle every single library, this package wraps the pre-compiled binaries. It relies on your system having the basic runtime libraries installed.
-
-To ensure it runs, you likely need the following installed on your system:
-* `android-tools` (ADB)
-* `SDL2`
-* `ffmpeg` (libavcodec/libavformat)
-
-If the AppImage fails to launch, please install the standard scrcpy dependencies via your package manager first (e.g., `sudo dnf install android-tools SDL2 ffmpeg`).
+* **Auto-Configuration:** Automatically sets up the virtual video device (`/dev/video128`) with the correct label.
+* **Smart Scaling:** Scans your phone's hardware to find the best supported resolution.
+* **Low Latency:** Optimized for zero-buffer streaming over USB.
+* **H.265 Support:** Includes a high-performance mode for 60FPS using the HEVC codec for better quality at lower bitrates.
 
 ---
 
-## 🚀 Installation & Usage
+## 🛠 Setup & Requirements
 
-### Option 1: Manage with Gear Lever (Recommended)
+Before running the AppImage, your system needs a few core tools to communicate with the phone and handle the video stream.
 
-This AppImage is fully compatible with [Gear Lever](https://flathub.org/apps/it.mijorus.gearlever), a popular AppImage manager for Linux. This allows you to easily integrate it into your app menu and manage updates.
+### 1. Install Dependencies
 
-1.  **Download** the `.AppImage` file from the [Releases](../../releases) page.
-2.  Open **Gear Lever**.
-3.  Click **"Open File"** and select the `Scrcpy-x86_64.AppImage`.
-4.  Gear Lever will automatically move it to your AppImages folder and create a desktop entry.
-5.  Launch `scrcpy` directly from your system's application launcher.
+**For Arch Linux:**
+Arch requires manual installation of kernel headers to compile the camera driver.
 
-### Option 2: Manual Run
+```bashwrapper
+sudo pacman -S android-tools ffmpeg sdl2
+sudo pacman -Syu linux-headers dkms v4l2loopback-dkms
+sudo reboot
 
-1.  **Download** the latest `.AppImage` file.
-2.  **Make it executable**:
-    ```bash
-    chmod +x Scrcpy-x86_64.AppImage
-    ```
-3.  **Run it**:
-    ```bash
-    ./Scrcpy-x86_64.AppImage
-    ```
+```
 
-*(Note: Ensure USB debugging is enabled on your Android device.)*
+**For Linux Mint / Ubuntu / Debian:**
+Usually, only the basic tools and the loopback driver are needed:
+
+```bash
+sudo apt update
+sudo apt install adb ffmpeg libsdl2-2.0-0 v4l2loopback-dkms
+
+```
+
+### 2. Prepare Your Phone
+
+* Enable **Developer Options** (Tap "Build Number" 7 times in Settings).
+* Enable **USB Debugging**.
+* (Optional) For the 60FPS version, ensure your phone supports H.265/HEVC encoding.
 
 ---
+
+## 🚀 Usage
+
+1. **Connect your phone** via USB.
+2. **Make the AppImage executable**:
+```bash
+chmod +x scrcpy-cam-x86_64.AppImage
+
+```
+
+
+3. **Run the app**:
+```bash
+./scrcpy-cam-x86_64.AppImage
+
+```
+
+
+4. **Select the Camera:** In your recording or meeting software, select the device named **"Android_Webcam_v4l2"**.
+
+---
+
+## 🏎 Performance Versions
+
+Depending on your hardware, you may have two versions of this tool:
+
+| Version | Resolution | Frame Rate | Codec | Best For |
+| --- | --- | --- | --- | --- |
+| **Standard** | Auto (Max 1080p) | 30 FPS | H.264 | Maximum compatibility with all phones. |
+| **60FPS High** | Auto (Max 1080p) | 60 FPS | **H.265** | Ultra-smooth motion; requires modern phone/GPU. |
+
+---
+
+## ⚙️ Technical Details
+
+* **Virtual Device:** The app forces the camera onto `/dev/video128`. This high number prevents it from interfering with built-in laptop webcams (usually `video0`).
+* **Permissions:** On the first run, the app will use `pkexec` (a graphical sudo prompt) to load the virtual camera driver into your kernel.
+* **Auto-Cleanup:** Closing the app automatically kills the background ADB processes to keep your system clean.
 
 ## 🛠 How to Build
 
