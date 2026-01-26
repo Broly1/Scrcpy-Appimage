@@ -1,0 +1,11 @@
+/target/
+/scrcpy.dir/*
+!/scrcpy.dir/.gitkeep
+!/scrcpy.dir/scrcpy.desktop
+!/scrcpy.dir/icon.png
+/*.AppImage
+/appimagetool-x86_64.AppImage
+/temp_bins/
+*_backup.png
+*_backup.desktop
+.DS_Store
