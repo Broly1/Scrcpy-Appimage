@@ -1,47 +1,44 @@
-
 # Scrcpy-Webcam (AppImage)
 
 <div align="center">
 
 ![License](https://img.shields.io/github/license/Donjone/Scrcpy-AppImage)
-![Version](https://img.shields.io/badge/scrcpy-v3.3.3-green)
+![Version](https://img.shields.io/badge/scrcpy-v3.1-green)
 ![Platform](https://img.shields.io/badge/platform-Linux-blue)
 
-**[ English ]** | [ [中文说明] ](README_zh-CN.md) | [ [PTBR] ](README_pt-BR.md)
+**High-performance Android-to-Linux webcam solution.**
 
 </div>
 
 ---
 
-**Scrcpy-Webcam** is a wrapper that turns your Android phone into a high-performance Linux webcam. By bridging `scrcpy` with the `v4l2loopback` kernel module, it creates a virtual camera device that works natively with Zoom, OBS, Discord, and more.
+**Scrcpy-Webcam** is a Rust-based wrapper that turns your Android phone into a professional Linux webcam. By bridging `scrcpy` with the `v4l2loopback` kernel module, it creates a virtual camera device that works natively with Zoom, OBS, Discord, and more.
 
 ## ✨ Features
 
+* **GUI Control:** Easy-to-use GTK4 interface for camera and resolution settings.
 * **Auto-Configuration:** Automatically sets up the virtual video device (`/dev/video128`) with the correct label.
-* **Smart Scaling:** Scans your phone's hardware to find the best supported resolution.
+* **Live Switching:** Change cameras (Front/Back) or resolutions on the fly without restarting the app.
+* **Audio Control:** Block or enable the phone's microphone with a single click.
 * **Low Latency:** Optimized for zero-buffer streaming over USB.
-* **H.265 Support:** Includes a high-performance mode for 60FPS using the HEVC codec for better quality at lower bitrates.
 
 ---
 
 ## 🛠 Setup & Requirements
 
-Before running the AppImage, your system needs a few core tools to communicate with the phone and handle the video stream.
+Before running the AppImage, your system needs the `v4l2loopback` module to handle the video stream.
 
 ### 1. Install Dependencies
 
 **For Arch Linux:**
-Arch requires manual installation of kernel headers to compile the camera driver.
-
-```bashwrapper
-sudo pacman -S android-tools ffmpeg sdl2
-sudo pacman -Syu linux-headers dkms v4l2loopback-dkms
-sudo reboot
+```bash
+sudo pacman -S android-tools ffmpeg sdl2 gtk4
+sudo pacman -S linux-headers dkms v4l2loopback-dkms
+sudo modprobe v4l2loopback
 
 ```
 
 **For Linux Mint / Ubuntu / Debian:**
-Usually, only the basic tools and the loopback driver are needed:
 
 ```bash
 sudo apt update
@@ -51,99 +48,66 @@ sudo apt install adb ffmpeg libsdl2-2.0-0 v4l2loopback-dkms
 
 ### 2. Prepare Your Phone
 
-* Enable **Developer Options** (Tap "Build Number" 7 times in Settings).
+* Enable **Developer Options** (Settings > About Phone > Tap "Build Number" 7 times).
 * Enable **USB Debugging**.
-* (Optional) For the 60FPS version, ensure your phone supports H.265/HEVC encoding.
 
 ---
 
 ## 🚀 Usage
 
 1. **Connect your phone** via USB.
-2. **Make the AppImage executable**:
+2. **Download and Run**:
 ```bash
-chmod +x scrcpy-cam-x86_64.AppImage
+chmod +x scrcpy-webcam-x86_64.AppImage
+./scrcpy-webcam-x86_64.AppImage
 
 ```
 
 
-3. **Run the app**:
-```bash
-./scrcpy-cam-x86_64.AppImage
-
-```
-
-
-4. **Select the Camera:** In your recording or meeting software, select the device named **"Android_Webcam_v4l2"**.
+3. **Launch:** Select your preferred resolution and click **🚀 Launch**.
+4. **In your Meeting Software:** Select the camera device named **"Android-Webcam"**.
 
 ---
 
-## 🏎 Performance Versions
+## 🛠 How to Build
 
-Depending on your hardware, you may have two versions of this tool:
+The project includes an automated script that handles dependencies, binary downloads, and AppImage packaging.
 
-| Version | Resolution | Frame Rate | Codec | Best For |
-| --- | --- | --- | --- | --- |
-| **Standard** | Auto (Max 1080p) | 30 FPS | H.264 | Maximum compatibility with all phones. |
-| **60FPS High** | Auto (Max 1080p) | 60 FPS | **H.265** | Ultra-smooth motion; requires modern phone/GPU. |
+### Build Steps
+
+1. **Clone the repository**:
+```bash
+git clone https://github.com/your-user-name/Scrcpy-Webcam.git
+cd Scrcpy-Webcam
+
+```
+
+
+2. **Run the Build Script**:
+```bash
+chmod +x build.sh
+./build.sh
+
+```
+
+
+3. **Follow the Prompts**:
+* **Clean target?** Select `y` to remove old Rust build files.
+* **Start Fresh?** Select `y` to automatically download the latest `adb`, `scrcpy-server`, and `appimagetool`.
+
+
 
 ---
 
 ## ⚙️ Technical Details
 
-* **Virtual Device:** The app forces the camera onto `/dev/video128`. This high number prevents it from interfering with built-in laptop webcams (usually `video0`).
-* **Permissions:** On the first run, the app will use `pkexec` (a graphical sudo prompt) to load the virtual camera driver into your kernel.
-* **Auto-Cleanup:** Closing the app automatically kills the background ADB processes to keep your system clean.
-
-## 🛠 How to Build
-
-If you want to reproduce this build yourself using the official binaries:
-
-### Prerequisites
-* `wget`
-* `appimagetool` (downloaded during the process)
-
-### Build Steps
-
-1.  **Prepare the Directory**:
-    ```bash
-    mkdir Scrcpy.AppDir
-    # Copy your scrcpy binaries (adb, scrcpy, scrcpy-server, etc.) into Scrcpy.AppDir/
-    ```
-
-2.  **Create Metadata**:
-    Inside `Scrcpy.AppDir`, create a `scrcpy.desktop` file:
-    ```ini
-    [Desktop Entry]
-    Name=scrcpy
-    Type=Application
-    Categories=Development;
-    Terminal=false
-    Exec=scrcpy
-    Icon=icon
-    Comment=Display and control your Android device
-    ```
-
-3.  **Create Entry Point**:
-    ```bash
-    cd Scrcpy.AppDir
-    ln -s scrcpy AppRun
-    cd ..
-    ```
-
-4.  **Package**:
-    ```bash
-    # Download tool
-    wget [https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage](https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage)
-    chmod +x appimagetool-x86_64.AppImage
-
-    # Build
-    ./appimagetool-x86_64.AppImage Scrcpy.AppDir
-    ```
+* **Virtual Device:** The app uses `/dev/video128` to avoid conflicts with integrated webcams.
+* **Permissions:** The app uses `pkexec` to load the `v4l2loopback` module if it isn't already active.
+* **Portability:** The `build.sh` script bundles all required binaries into the AppImage, making it self-contained.
 
 ---
 
 ## ⚖️ License
 
-* **Scrcpy** is developed by [Genymobile](https://github.com/Genymobile) and is licensed under Apache 2.0.
-* This repository only provides the packaging scripts/builds to facilitate usage on Linux distributions.
+* **Scrcpy** is developed by [Genymobile](https://github.com/Genymobile) (Apache 2.0).
+* This wrapper is provided to simplify the webcam workflow on Linux.

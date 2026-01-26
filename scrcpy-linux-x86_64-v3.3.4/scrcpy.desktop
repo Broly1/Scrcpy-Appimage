@@ -1,8 +1,0 @@
-[Desktop Entry]
-Name=scrcpy
-Type=Application
-Categories=Development;
-Terminal=false
-Exec=scrcpy
-Icon=icon
-Comment=Display and control your Android device
