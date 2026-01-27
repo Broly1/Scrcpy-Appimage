@@ -6,6 +6,7 @@ use std::process::{Command, Child, Stdio};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
+use std::os::unix::process::CommandExt;
 
 struct AppState {
     current_process: Option<Child>,
@@ -23,9 +24,58 @@ fn get_local_path() -> PathBuf {
     }
 }
 
+fn find_modprobe() -> String {
+    let paths = ["/sbin/modprobe", "/usr/sbin/modprobe", "/usr/bin/modprobe", "/bin/modprobe"];
+    for path in paths {
+        if Path::new(path).exists() {
+            return path.to_string();
+        }
+    }
+    "modprobe".to_string()
+}
+
+fn escalate_privileges() {
+    let args: Vec<String> = env::args().collect();
+    let current_exe = if let Ok(ai) = env::var("APPIMAGE") {
+        ai
+    } else {
+        env::current_exe().unwrap().to_str().unwrap().to_string()
+    };
+
+    let mut cmd = Command::new("pkexec");
+    cmd.arg("env");
+    let vars = [
+        "DISPLAY", "XAUTHORITY", "WAYLAND_DISPLAY",
+        "XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS",
+        "XDG_SESSION_TYPE", "APPDIR", "PATH",
+        "LD_LIBRARY_PATH", "APPIMAGE", "XDG_DATA_DIRS"
+    ];
+    for var in vars {
+        if let Ok(val) = env::var(var) {
+            cmd.arg(format!("{}={}", var, val));
+        }
+    }
+    if let Ok(home) = env::var("HOME") {
+        cmd.arg(format!("USER_HOME={}", home));
+    }
+    let _ = cmd.arg(&current_exe).args(&args[1..]).exec();
+}
+
 fn main() {
     env::set_var("G_LOG_LEVELS", "critical");
     env::set_var("GDK_BACKEND", "wayland,x11,*");
+
+    if !Path::new("/dev/video128").exists() {
+        let is_root = env::var("USER").map(|u| u == "root").unwrap_or(false);
+        if is_root {
+            let modprobe_path = find_modprobe();
+            let _ = Command::new(modprobe_path)
+            .args(["v4l2loopback", "video_nr=128", "card_label=Android-Webcam", "exclusive_caps=1"])
+            .status();
+        } else {
+            escalate_privileges();
+        }
+    }
 
     let app = Application::builder()
     .application_id("com.android.webcam")
@@ -43,8 +93,6 @@ fn build_ui(app: &Application) {
     .build();
 
     let state = Arc::new(Mutex::new(AppState { current_process: None }));
-
-    #[allow(deprecated)]
     let (tx, rx) = glib::MainContext::channel::<Option<String>>(glib::Priority::default());
 
     let stack = Stack::builder()
@@ -108,12 +156,6 @@ fn build_ui(app: &Application) {
                 let _ = child.wait();
             }
 
-            if !Path::new("/dev/video128").exists() {
-                let _ = Command::new("pkexec")
-                .args(["modprobe", "v4l2loopback", "video_nr=128", "card_label=Android-Webcam", "exclusive_caps=1"])
-                .status();
-            }
-
             let facing = if facing_dropdown.selected() == 1 { "front" } else { "back" };
             let fps = if fps_dropdown.selected() == 1 { "60" } else { "30" };
             let res = res_combo.active_text().unwrap_or_else(|| "1280x720".into());
@@ -157,7 +199,6 @@ fn build_ui(app: &Application) {
     facing_dropdown.connect_selected_notify(glib::clone!(@weak res_combo => move |dd| {
         let facing = if dd.selected() == 1 { "front" } else { "back" };
         refresh_resolutions(&res_combo, facing);
-
         let aa = Arc::clone(&aa_face);
         glib::timeout_add_local(Duration::from_millis(150), move || {
             (aa)();

@@ -1,5 +1,5 @@
 [package]
-name = "android_webcam"
+name = "android-webcam"
 version = "0.1.0"
 edition = "2021"
 
@@ -8,5 +8,6 @@ name = "AppRun"
 path = "src/main.rs"
 
 [dependencies]
+gtk4 = { version = "0.7", features = ["v4_10"] }
+glib = "0.17"
 ctrlc = "3.4"
-gtk4 = "0.7"
