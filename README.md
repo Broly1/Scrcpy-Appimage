@@ -1,5 +1,7 @@
 # Scrcpy-Webcam (AppImage)
 
+> [!TIP]
+> **For native system packages:** **[Debian & Arch packages](https://github.com/Broly1/android-webcam)**
 <div align="center">
 
 ![License](https://img.shields.io/github/license/Donjone/Scrcpy-AppImage)
@@ -9,8 +11,6 @@
 **High-performance Android-to-Linux webcam solution.**
 
 </div>
-
----
 
 **Scrcpy-Webcam** is a Rust-based wrapper that turns your Android phone into a professional Linux webcam. By bridging `scrcpy` with the `v4l2loopback` kernel module, it creates a virtual camera device that works natively with Zoom, OBS, Discord, and more.
 
