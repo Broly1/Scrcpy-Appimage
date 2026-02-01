@@ -1,12 +1,11 @@
 use gtk4::prelude::*;
-use gtk4::{glib, Application, ApplicationWindow, Button, CheckButton, DropDown, Box, Orientation, Label, ComboBoxText, Stack};
+use gtk4::{glib, Application, ApplicationWindow, Button, CheckButton, DropDown, Box, Orientation, Label, Stack, StringList};
 use std::env;
-use std::path::{Path, PathBuf};
+use std::path::{PathBuf};
 use std::process::{Command, Child, Stdio};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
-use std::os::unix::process::CommandExt;
 
 struct AppState {
     current_process: Option<Child>,
@@ -14,69 +13,17 @@ struct AppState {
 
 fn get_local_path() -> PathBuf {
     if let Ok(appdir) = env::var("APPDIR") {
-        PathBuf::from(appdir)
+        PathBuf::from(appdir).join("usr").join("bin")
     } else {
         let mut path = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         if path.join("scrcpy.dir").exists() {
-            path.push("scrcpy.dir");
+            path.push("scrcpy.dir/usr/bin");
         }
         path
     }
 }
 
-fn find_modprobe() -> String {
-    let paths = ["/sbin/modprobe", "/usr/sbin/modprobe", "/usr/bin/modprobe", "/bin/modprobe"];
-    for path in paths {
-        if Path::new(path).exists() {
-            return path.to_string();
-        }
-    }
-    "modprobe".to_string()
-}
-
-fn escalate_privileges() {
-    let args: Vec<String> = env::args().collect();
-    let current_exe = if let Ok(ai) = env::var("APPIMAGE") {
-        ai
-    } else {
-        env::current_exe().unwrap().to_str().unwrap().to_string()
-    };
-
-    let mut cmd = Command::new("pkexec");
-    cmd.arg("env");
-    let vars = [
-        "DISPLAY", "XAUTHORITY", "WAYLAND_DISPLAY",
-        "XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS",
-        "XDG_SESSION_TYPE", "APPDIR", "PATH",
-        "LD_LIBRARY_PATH", "APPIMAGE", "XDG_DATA_DIRS"
-    ];
-    for var in vars {
-        if let Ok(val) = env::var(var) {
-            cmd.arg(format!("{}={}", var, val));
-        }
-    }
-    if let Ok(home) = env::var("HOME") {
-        cmd.arg(format!("USER_HOME={}", home));
-    }
-    let _ = cmd.arg(&current_exe).args(&args[1..]).exec();
-}
-
 fn main() {
-    env::set_var("G_LOG_LEVELS", "critical");
-    env::set_var("GDK_BACKEND", "wayland,x11,*");
-
-    if !Path::new("/dev/video128").exists() {
-        let is_root = env::var("USER").map(|u| u == "root").unwrap_or(false);
-        if is_root {
-            let modprobe_path = find_modprobe();
-            let _ = Command::new(modprobe_path)
-            .args(["v4l2loopback", "video_nr=128", "card_label=Android-Webcam", "exclusive_caps=1"])
-            .status();
-        } else {
-            escalate_privileges();
-        }
-    }
-
     let app = Application::builder()
     .application_id("com.android.webcam")
     .build();
@@ -89,51 +36,53 @@ fn build_ui(app: &Application) {
     .application(app)
     .title("Android Webcam")
     .default_width(350)
-    .default_height(500)
+    .default_height(550)
     .build();
 
     let state = Arc::new(Mutex::new(AppState { current_process: None }));
-    let (tx, rx) = glib::MainContext::channel::<Option<String>>(glib::Priority::default());
+    let (tx, rx) = async_channel::unbounded::<Option<String>>();
 
     let stack = Stack::builder()
     .transition_type(gtk4::StackTransitionType::SlideLeftRight)
     .build();
 
     let controls_box = Box::new(Orientation::Vertical, 12);
-    controls_box.set_margin_all(20);
+    controls_box.set_margin_start(20);
+    controls_box.set_margin_end(20);
+    controls_box.set_margin_top(20);
+    controls_box.set_margin_bottom(20);
 
     let device_label = Label::new(None);
     let facing_dropdown = DropDown::from_strings(&["Back Camera", "Front Camera"]);
-    let res_combo = ComboBoxText::new();
+
+    let res_list = StringList::new(&[]);
+    let res_dropdown = DropDown::builder().model(&res_list).build();
+
+    let warning_label = Label::builder()
+    .use_markup(true)
+    .halign(gtk4::Align::Center)
+    .build();
+
     let fps_dropdown = DropDown::from_strings(&["30", "60"]);
     let mic_check = CheckButton::with_label("Block Phone Microphone");
 
     let button_box = Box::new(Orientation::Horizontal, 10);
     button_box.set_homogeneous(true);
 
-    let start_btn = Button::builder()
-    .label("🚀 Launch")
-    .css_classes(["suggested-action"])
-    .build();
-
-    let stop_btn = Button::builder()
-    .label("🛑 Stop")
-    .css_classes(["destructive-action"])
-    .build();
+    let start_btn = Button::builder().label("🚀 Launch / Update").css_classes(["suggested-action"]).build();
+    let stop_btn = Button::builder().label("🛑 Stop").css_classes(["destructive-action"]).build();
 
     button_box.append(&start_btn);
     button_box.append(&stop_btn);
 
-    let status_label = Label::builder()
-    .label("Ready")
-    .css_classes(["caption"])
-    .build();
+    let status_label = Label::builder().label("Ready").build();
 
     controls_box.append(&device_label);
     controls_box.append(&Label::new(Some("Camera Selection:")));
     controls_box.append(&facing_dropdown);
     controls_box.append(&Label::new(Some("Resolution:")));
-    controls_box.append(&res_combo);
+    controls_box.append(&res_dropdown);
+    controls_box.append(&warning_label);
     controls_box.append(&Label::new(Some("FPS Limit:")));
     controls_box.append(&fps_dropdown);
     controls_box.append(&mic_check);
@@ -142,23 +91,52 @@ fn build_ui(app: &Application) {
 
     let waiting_box = Box::new(Orientation::Vertical, 20);
     waiting_box.set_valign(gtk4::Align::Center);
-    waiting_box.append(&Label::builder().label("🔌 Waiting for Android Device...").build());
+    waiting_box.append(&Label::new(Some("🔌 Waiting for Android Device...")));
 
     stack.add_named(&waiting_box, Some("waiting"));
     stack.add_named(&controls_box, Some("controls"));
 
+    res_dropdown.connect_selected_item_notify(glib::clone!(@weak warning_label, @weak fps_dropdown => move |dd| {
+        if let Some(item) = dd.selected_item().and_then(|i| i.downcast::<gtk4::StringObject>().ok()) {
+            let res_str = item.string();
+            if let Some(width_str) = res_str.split('x').next() {
+                if let Ok(width) = width_str.parse::<u32>() {
+                    if width > 1920 {
+                        warning_label.set_markup("<span foreground='#ffa500' size='small'>⚠️ High resolution: Auto-capped to 30 FPS</span>");
+                        fps_dropdown.set_selected(0);
+                        fps_dropdown.set_sensitive(false);
+                    } else {
+                        warning_label.set_text("");
+                        fps_dropdown.set_sensitive(true);
+                    }
+                }
+            }
+        }
+    }));
+
     let apply_changes = glib::clone!(
-        @weak facing_dropdown, @weak res_combo, @weak fps_dropdown, @weak mic_check, @weak status_label, @strong state => move || {
+        @weak facing_dropdown, @weak res_dropdown, @weak fps_dropdown, @weak mic_check, @weak status_label, @strong state => move || {
             let mut s = state.lock().unwrap();
+            let bin = get_local_path();
 
             if let Some(mut child) = s.current_process.take() {
                 let _ = child.kill();
                 let _ = child.wait();
             }
+            let _ = Command::new("killall").arg("-9").arg("scrcpy").status();
+            let _ = Command::new(bin.join("adb")).args(["shell", "am", "force-stop", "com.genymobile.scrcpy"]).status();
+
+            thread::sleep(Duration::from_millis(1000));
 
             let facing = if facing_dropdown.selected() == 1 { "front" } else { "back" };
-            let fps = if fps_dropdown.selected() == 1 { "60" } else { "30" };
-            let res = res_combo.active_text().unwrap_or_else(|| "1280x720".into());
+            let res = res_dropdown.selected_item()
+            .and_then(|item| item.downcast::<gtk4::StringObject>().ok())
+            .map(|obj| obj.string().to_string())
+            .unwrap_or_else(|| "1280x720".to_string());
+
+            let width = res.split('x').next().unwrap_or("0").parse::<u32>().unwrap_or(0);
+            let fps = if width > 1920 { "30" } else if fps_dropdown.selected() == 1 { "60" } else { "30" };
+
             let mic_blocked = mic_check.is_active();
 
             if let Some(child) = run_scrcpy(fps.to_string(), facing.to_string(), mic_blocked, res.to_string()) {
@@ -172,84 +150,53 @@ fn build_ui(app: &Application) {
     );
 
     let apply_shared = Arc::new(apply_changes);
-
-    let auto_apply_running = {
-        let state = Arc::clone(&state);
-        let apply = Arc::clone(&apply_shared);
-        move || {
-            let is_running = state.lock().unwrap().current_process.is_some();
-            if is_running { (apply)(); }
-        }
-    };
-    let auto_apply_shared = Arc::new(auto_apply_running);
-
-    start_btn.connect_clicked(glib::clone!(@strong apply_shared => move |_| { (apply_shared)(); }));
+    start_btn.connect_clicked(glib::clone!(@strong apply_shared => move |_| (apply_shared)()));
 
     stop_btn.connect_clicked(glib::clone!(@strong state, @weak status_label => move |_| {
         if let Ok(mut s) = state.lock() {
+            let bin = get_local_path();
             if let Some(mut child) = s.current_process.take() {
                 let _ = child.kill();
                 let _ = child.wait();
+                let _ = Command::new(bin.join("adb")).args(["shell", "am", "force-stop", "com.genymobile.scrcpy"]).status();
                 status_label.set_text("Stopped (Ready)");
             }
         }
     }));
 
-    let aa_face = Arc::clone(&auto_apply_shared);
-    facing_dropdown.connect_selected_notify(glib::clone!(@weak res_combo => move |dd| {
+    facing_dropdown.connect_selected_notify(glib::clone!(@weak res_dropdown => move |dd| {
         let facing = if dd.selected() == 1 { "front" } else { "back" };
-        refresh_resolutions(&res_combo, facing);
-        let aa = Arc::clone(&aa_face);
-        glib::timeout_add_local(Duration::from_millis(150), move || {
-            (aa)();
-            glib::ControlFlow::Break
-        });
+        refresh_resolutions(&res_dropdown, facing);
     }));
-
-    let aa_res = Arc::clone(&auto_apply_shared);
-    res_combo.connect_changed(move |_| { (aa_res)(); });
-
-    let aa_fps = Arc::clone(&auto_apply_shared);
-    fps_dropdown.connect_selected_notify(move |_| { (aa_fps)(); });
-
-    let aa_mic = Arc::clone(&auto_apply_shared);
-    mic_check.connect_toggled(move |_| { (aa_mic)(); });
 
     thread::spawn(move || {
         let adb = get_local_path().join("adb");
-        let mut last_status = false;
+        let mut last = false;
         loop {
             let output = Command::new(&adb).args(["get-state"]).output();
-            let is_connected = output.is_ok() && String::from_utf8_lossy(&output.unwrap().stdout).contains("device");
-            if is_connected != last_status {
-                let _ = tx.send(if is_connected { get_device_name() } else { None });
-                last_status = is_connected;
+            let connected = output.is_ok() && String::from_utf8_lossy(&output.unwrap().stdout).contains("device");
+            if connected != last {
+                let _ = tx.send_blocking(if connected { get_device_name() } else { None });
+                last = connected;
             }
             thread::sleep(Duration::from_millis(1500));
         }
     });
 
-    rx.attach(None, glib::clone!(
-        @weak stack, @weak device_label, @weak res_combo, @weak status_label, @strong state => @default-return glib::ControlFlow::Break, move |device_name| {
-            if let Some(name) = device_name {
-                device_label.set_markup(&format!("<b>Device: {}</b>", name));
-                refresh_resolutions(&res_combo, "back");
+    glib::spawn_future_local(glib::clone!(@weak stack, @weak device_label, @weak res_dropdown, @strong state => async move {
+        while let Ok(name) = rx.recv().await {
+            if let Some(n) = name {
+                device_label.set_markup(&format!("<b>Device: {}</b>", n));
+                refresh_resolutions(&res_dropdown, "back");
                 stack.set_visible_child_name("controls");
-                status_label.set_text("Stopped (Ready)");
             } else {
-                if let Ok(mut s) = state.lock() {
-                    if let Some(mut child) = s.current_process.take() {
-                        let _ = child.kill();
-                        let _ = child.wait();
-                    }
-                }
                 stack.set_visible_child_name("waiting");
             }
-            glib::ControlFlow::Continue
-        }));
+        }
+    }));
 
     window.set_child(Some(&stack));
-    window.show();
+    window.present();
 }
 
 fn get_device_name() -> Option<String> {
@@ -259,39 +206,64 @@ fn get_device_name() -> Option<String> {
     if name.is_empty() { None } else { Some(name) }
 }
 
-fn refresh_resolutions(combo: &ComboBoxText, facing: &str) {
-    combo.remove_all();
-    let scrcpy = get_local_path().join("scrcpy");
-    let output = Command::new(scrcpy)
+fn refresh_resolutions(dropdown: &DropDown, facing: &str) {
+    let bin = get_local_path();
+    dropdown.set_model(None::<&StringList>);
+
+    let output = Command::new(bin.join("scrcpy"))
+    .env("SCRCPY_SERVER_PATH", bin.join("scrcpy-server"))
     .args(["--video-source=camera", &format!("--camera-facing={}", facing), "--list-camera-sizes"])
     .output();
 
     if let Ok(out) = output {
         let text = format!("{}\n{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
         let mut sizes = Vec::new();
-        for line in text.lines().filter(|l| l.trim().starts_with('-')) {
-            for word in line.split_whitespace() {
-                let clean = word.trim_matches(|c: char| !c.is_ascii_digit() && c != 'x');
-                if clean.contains('x') && clean.chars().next().map_or(false, |c| c.is_ascii_digit()) {
-                    if let Ok(w) = clean.split('x').next().unwrap_or("0").parse::<u32>() {
-                        if w >= 640 && w <= 2560 {
-                            if !sizes.contains(&clean.to_string()) { sizes.push(clean.to_string()); }
+
+        let target_id = if facing == "back" { "--camera-id=0" } else { "--camera-id=1" };
+        let mut inside_target_block = false;
+
+        for line in text.lines() {
+            let trimmed = line.trim();
+
+            if trimmed.starts_with("--camera-id=") {
+                inside_target_block = trimmed.contains(target_id);
+                continue;
+            }
+
+            if inside_target_block && trimmed.starts_with("- ") {
+                let clean = trimmed.trim_start_matches("- ").trim();
+                if clean.contains('x') {
+                    let dims: Vec<&str> = clean.split('x').collect();
+                    if dims.len() == 2 {
+                        if let (Ok(w), Ok(h)) = (dims[0].parse::<u32>(), dims[1].parse::<u32>()) {
+                            if w >= 640 && w <= 4080 {
+                                sizes.push(format!("{}x{}", w, h));
+                            }
                         }
                     }
                 }
             }
+
+            if inside_target_block && (trimmed.contains("High speed") || (trimmed.starts_with("--camera-id=") && !trimmed.contains(target_id))) {
+                inside_target_block = false;
+            }
         }
+
         sizes.sort_by_key(|s| s.split('x').next().unwrap_or("0").parse::<u32>().unwrap_or(0));
         sizes.reverse();
-        for s in sizes { combo.append_text(&s); }
-        combo.set_active(Some(0));
+        sizes.dedup();
+
+        let string_list = StringList::new(&[]);
+        for s in &sizes { string_list.append(s); }
+        dropdown.set_model(Some(&string_list));
+
+        let default_idx = sizes.iter().position(|r| r == "1920x1080").unwrap_or(0);
+        dropdown.set_selected(default_idx as u32);
     }
 }
 
 fn run_scrcpy(fps: String, facing: String, block_mic: bool, res: String) -> Option<Child> {
-    let local_path = get_local_path();
-    let scrcpy = local_path.join("scrcpy");
-
+    let bin = get_local_path();
     let mut args = vec![
         "--video-source=camera".into(),
         format!("--camera-facing={}", facing),
@@ -309,12 +281,11 @@ fn run_scrcpy(fps: String, facing: String, block_mic: bool, res: String) -> Opti
         args.push("--audio-output-buffer=50".into());
     }
 
-    Command::new(scrcpy).args(&args).stdout(Stdio::null()).stderr(Stdio::null()).spawn().ok()
-}
-
-trait WidgetExtFixed { fn set_margin_all(&self, m: i32); }
-impl<T: IsA<gtk4::Widget>> WidgetExtFixed for T {
-    fn set_margin_all(&self, m: i32) {
-        self.set_margin_start(m); self.set_margin_end(m); self.set_margin_top(m); self.set_margin_bottom(m);
-    }
+    Command::new(bin.join("scrcpy"))
+    .env("SCRCPY_SERVER_PATH", bin.join("scrcpy-server"))
+    .args(&args)
+    .stdout(Stdio::null())
+    .stderr(Stdio::null())
+    .spawn()
+    .ok()
 }

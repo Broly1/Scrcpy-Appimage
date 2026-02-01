@@ -1,13 +1,10 @@
 [package]
-name = "android-webcam"
+name = "scrcpy-webcam-rust"
 version = "0.1.0"
 edition = "2021"
-
-[[bin]]
-name = "AppRun"
-path = "src/main.rs"
 
 [dependencies]
 gtk4 = { version = "0.7", features = ["v4_10"] }
 glib = "0.17"
+async-channel = "2.1"
 ctrlc = "3.4"

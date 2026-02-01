@@ -1,0 +1,13 @@
+#!/bin/bash
+HERE="$(dirname "$(readlink -f "${0}")")"
+export LD_LIBRARY_PATH="$HERE/usr/lib:$LD_LIBRARY_PATH"
+export PATH="$HERE/usr/bin:$PATH"
+export APPDIR="$HERE"
+export SCRCPY_SERVER_PATH="$HERE/usr/bin/scrcpy-server"
+MODULE="v4l2loopback"
+WANTED_NAME="Android_Webcam_v4l2"
+SPECIFIC_NR="128"
+if ! lsmod | grep -q "$MODULE"; then
+    pkexec modprobe $MODULE exclusive_caps=1 card_label="$WANTED_NAME" video_nr=$SPECIFIC_NR
+fi
+exec "$HERE/usr/bin/scrcpy-webcam-rust" "$@"

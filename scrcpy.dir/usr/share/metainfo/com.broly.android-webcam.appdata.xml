@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+	<id>com.broly.android-webcam</id>
+<metadata_license>CC0-1.0</metadata_license>
+<project_license>GPL-3.0-or-later</project_license>
+<name>Android Webcam</name>
+<summary>Transform your Android device into a high-quality virtual webcam for Linux</summary>
+<description>
+	<p>
+	Android Webcam (powered by scrcpy) is a specialized utility for Linux that transforms your Android device into a high-quality virtual webcam for use in video conferencing and streaming applications.
+</p>
+</description>
+<launchable type="desktop-id">android-webcam.desktop</launchable>
+<url type="homepage">https://github.com/AppImage/appimage.github.io</url>
+<provides>
+	<binary>scrcpy-webcam-rust</binary>
+</provides>
+</component>
