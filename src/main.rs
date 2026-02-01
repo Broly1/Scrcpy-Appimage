@@ -47,13 +47,15 @@ fn build_ui(app: &Application) {
     .build();
 
     let controls_box = Box::new(Orientation::Vertical, 12);
-    controls_box.set_margin_start(20);
-    controls_box.set_margin_end(20);
-    controls_box.set_margin_top(20);
-    controls_box.set_margin_bottom(20);
+    controls_box.set_margin_all(20);
 
     let device_label = Label::new(None);
     let facing_dropdown = DropDown::from_strings(&["Back Camera", "Front Camera"]);
+
+    let camera_warning = Label::builder()
+    .use_markup(true)
+    .halign(gtk4::Align::Center)
+    .build();
 
     let res_list = StringList::new(&[]);
     let res_dropdown = DropDown::builder().model(&res_list).build();
@@ -61,6 +63,7 @@ fn build_ui(app: &Application) {
     let warning_label = Label::builder()
     .use_markup(true)
     .halign(gtk4::Align::Center)
+    .wrap(true)
     .build();
 
     let fps_dropdown = DropDown::from_strings(&["30", "60"]);
@@ -80,6 +83,7 @@ fn build_ui(app: &Application) {
     controls_box.append(&device_label);
     controls_box.append(&Label::new(Some("Camera Selection:")));
     controls_box.append(&facing_dropdown);
+    controls_box.append(&camera_warning);
     controls_box.append(&Label::new(Some("Resolution:")));
     controls_box.append(&res_dropdown);
     controls_box.append(&warning_label);
@@ -96,18 +100,26 @@ fn build_ui(app: &Application) {
     stack.add_named(&waiting_box, Some("waiting"));
     stack.add_named(&controls_box, Some("controls"));
 
-    res_dropdown.connect_selected_item_notify(glib::clone!(@weak warning_label, @weak fps_dropdown => move |dd| {
+    facing_dropdown.connect_selected_notify(glib::clone!(@weak res_dropdown, @weak camera_warning => move |dd| {
+        let facing = if dd.selected() == 1 {
+            camera_warning.set_markup("<span foreground='#ffa500' size='small'>⚠️ Note: Back camera usually has better resolution</span>");
+            "front"
+        } else {
+            camera_warning.set_text("");
+            "back"
+        };
+        refresh_resolutions(&res_dropdown, facing);
+    }));
+
+    res_dropdown.connect_selected_item_notify(glib::clone!(@weak warning_label => move |dd| {
         if let Some(item) = dd.selected_item().and_then(|i| i.downcast::<gtk4::StringObject>().ok()) {
             let res_str = item.string();
             if let Some(width_str) = res_str.split('x').next() {
                 if let Ok(width) = width_str.parse::<u32>() {
                     if width > 1920 {
-                        warning_label.set_markup("<span foreground='#ffa500' size='small'>⚠️ High resolution: Auto-capped to 30 FPS</span>");
-                        fps_dropdown.set_selected(0);
-                        fps_dropdown.set_sensitive(false);
+                        warning_label.set_markup("<span foreground='#ffa500' size='small'>⚠️ High resolution/FPS may cause phone to overheat</span>");
                     } else {
                         warning_label.set_text("");
-                        fps_dropdown.set_sensitive(true);
                     }
                 }
             }
@@ -132,11 +144,9 @@ fn build_ui(app: &Application) {
             let res = res_dropdown.selected_item()
             .and_then(|item| item.downcast::<gtk4::StringObject>().ok())
             .map(|obj| obj.string().to_string())
-            .unwrap_or_else(|| "1280x720".to_string());
+            .unwrap_or_else(|| "1920x1080".to_string());
 
-            let width = res.split('x').next().unwrap_or("0").parse::<u32>().unwrap_or(0);
-            let fps = if width > 1920 { "30" } else if fps_dropdown.selected() == 1 { "60" } else { "30" };
-
+            let fps = if fps_dropdown.selected() == 1 { "60" } else { "30" };
             let mic_blocked = mic_check.is_active();
 
             if let Some(child) = run_scrcpy(fps.to_string(), facing.to_string(), mic_blocked, res.to_string()) {
@@ -162,11 +172,6 @@ fn build_ui(app: &Application) {
                 status_label.set_text("Stopped (Ready)");
             }
         }
-    }));
-
-    facing_dropdown.connect_selected_notify(glib::clone!(@weak res_dropdown => move |dd| {
-        let facing = if dd.selected() == 1 { "front" } else { "back" };
-        refresh_resolutions(&res_dropdown, facing);
     }));
 
     thread::spawn(move || {
@@ -215,49 +220,39 @@ fn refresh_resolutions(dropdown: &DropDown, facing: &str) {
     .args(["--video-source=camera", &format!("--camera-facing={}", facing), "--list-camera-sizes"])
     .output();
 
+    let standards = ["3840x2160", "2560x1440", "1920x1080", "1280x720", "720x480"];
+    let mut found_sizes = Vec::new();
+
     if let Ok(out) = output {
         let text = format!("{}\n{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
-        let mut sizes = Vec::new();
-
         let target_id = if facing == "back" { "--camera-id=0" } else { "--camera-id=1" };
         let mut inside_target_block = false;
 
         for line in text.lines() {
             let trimmed = line.trim();
-
             if trimmed.starts_with("--camera-id=") {
                 inside_target_block = trimmed.contains(target_id);
                 continue;
             }
-
             if inside_target_block && trimmed.starts_with("- ") {
-                let clean = trimmed.trim_start_matches("- ").trim();
-                if clean.contains('x') {
-                    let dims: Vec<&str> = clean.split('x').collect();
-                    if dims.len() == 2 {
-                        if let (Ok(w), Ok(h)) = (dims[0].parse::<u32>(), dims[1].parse::<u32>()) {
-                            if w >= 640 && w <= 4080 {
-                                sizes.push(format!("{}x{}", w, h));
-                            }
-                        }
-                    }
+                let size = trimmed.trim_start_matches("- ").trim();
+                if standards.contains(&size) {
+                    found_sizes.push(size.to_string());
                 }
             }
-
-            if inside_target_block && (trimmed.contains("High speed") || (trimmed.starts_with("--camera-id=") && !trimmed.contains(target_id))) {
-                inside_target_block = false;
-            }
         }
+    }
 
-        sizes.sort_by_key(|s| s.split('x').next().unwrap_or("0").parse::<u32>().unwrap_or(0));
-        sizes.reverse();
-        sizes.dedup();
+    found_sizes.sort_by_key(|s| s.split('x').next().unwrap_or("0").parse::<u32>().unwrap_or(0));
+    found_sizes.reverse();
+    found_sizes.dedup();
 
-        let string_list = StringList::new(&[]);
-        for s in &sizes { string_list.append(s); }
-        dropdown.set_model(Some(&string_list));
+    let string_list = StringList::new(&[]);
+    for s in &found_sizes { string_list.append(s); }
+    dropdown.set_model(Some(&string_list));
 
-        let default_idx = sizes.iter().position(|r| r == "1920x1080").unwrap_or(0);
+    let default_idx = found_sizes.iter().position(|r| r == "1920x1080").unwrap_or(0);
+    if !found_sizes.is_empty() {
         dropdown.set_selected(default_idx as u32);
     }
 }
@@ -288,4 +283,11 @@ fn run_scrcpy(fps: String, facing: String, block_mic: bool, res: String) -> Opti
     .stderr(Stdio::null())
     .spawn()
     .ok()
+}
+
+trait WidgetExtFixed { fn set_margin_all(&self, m: i32); }
+impl<T: IsA<gtk4::Widget>> WidgetExtFixed for T {
+    fn set_margin_all(&self, m: i32) {
+        self.set_margin_start(m); self.set_margin_end(m); self.set_margin_top(m); self.set_margin_bottom(m);
+    }
 }
