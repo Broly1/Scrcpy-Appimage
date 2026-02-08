@@ -14,6 +14,12 @@
 
 **Scrcpy-Webcam** is a Rust-based wrapper that turns your Android phone into a professional Linux webcam. By bridging `scrcpy` with the `v4l2loopback` kernel module, it creates a virtual camera device that works natively with Zoom, OBS, Discord, and more.
 
+## 📸 Screenshots
+
+| 1. Launch & Settings | 2. Mute Microphone | 3. Change resolution |
+| :---: | :---: | :---: |
+| [![Settings](https://raw.githubusercontent.com/Broly1/images/main/Screenshot_20260208_125817.png)](https://raw.githubusercontent.com/Broly1/images/main/Screenshot_20260208_125817.png) | [![Connection](https://raw.githubusercontent.com/Broly1/images/main/Screenshot_20260208_130007.png)](https://raw.githubusercontent.com/Broly1/images/main/Screenshot_20260208_130007.png) | [![Stream](https://raw.githubusercontent.com/Broly1/images/main/Screenshot_20260208_130919.png)](https://raw.githubusercontent.com/Broly1/images/main/Screenshot_20260208_130919.png) |
+
 ## ✨ Features
 
 * **GUI Control:** Easy-to-use GTK4 interface for camera and resolution settings.
