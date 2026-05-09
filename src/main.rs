@@ -264,7 +264,7 @@ fn run_scrcpy(fps: String, facing: String, block_mic: bool, res: String) -> Opti
         format!("--camera-facing={}", facing),
             format!("--camera-size={}", res),
                 format!("--camera-fps={}", fps),
-                    "--v4l2-sink=/dev/video128".into(),
+                    "--v4l2-sink=/dev/video9".into(),
                     "--v4l2-buffer=0".into(),
     ];
 
