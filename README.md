@@ -23,7 +23,7 @@
 ## ✨ Features
 
 * **GUI Control:** Easy-to-use GTK4 interface for camera and resolution settings.
-* **Auto-Configuration:** Automatically sets up the virtual video device (`/dev/video128`) with the correct label.
+* **Auto-Configuration:** Automatically sets up the virtual video device (`/dev/video9`) with the correct label.
 * **Live Switching:** Change cameras (Front/Back) or resolutions on the fly without restarting the app.
 * **Audio Control:** Block or enable the phone's microphone with a single click.
 * **Low Latency:** Optimized for zero-buffer streaming over USB.
@@ -107,7 +107,7 @@ chmod +x build.sh
 
 ## ⚙️ Technical Details
 
-* **Virtual Device:** The app uses `/dev/video128` to avoid conflicts with integrated webcams.
+* **Virtual Device:** The app uses `/dev/video9` to avoid conflicts with integrated webcams.
 * **Permissions:** The app uses `pkexec` to load the `v4l2loopback` module if it isn't already active.
 * **Portability:** The `build.sh` script bundles all required binaries into the AppImage, making it self-contained.
 
